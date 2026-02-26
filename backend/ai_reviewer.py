@@ -12,6 +12,19 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 from openai import AsyncOpenAI
 
+try:
+    import anthropic
+    HAS_ANTHROPIC = True
+except ImportError:
+    HAS_ANTHROPIC = False
+
+try:
+    from google import genai
+    from google.genai import types
+    HAS_GOOGLE_GENAI = True
+except ImportError:
+    HAS_GOOGLE_GENAI = False
+
 from github_client import PullRequest, FileChange
 from security import SensitiveFilter, SecurityConfig, SensitiveMatch
 from chunker import PRChunker, ReviewChunk, FileClassifier, FilePriority, aggregate_chunk_reviews, ChunkReviewResult
@@ -36,10 +49,12 @@ class IssueCategory(str, Enum):
 
 class ModelProvider(str, Enum):
     OPENAI = "openai"
-    DEEPSEEK = "deepseek"  # DeepSeek API
+    DEEPSEEK = "deepseek"      # DeepSeek API
+    ANTHROPIC = "anthropic"    # Anthropic Claude API
+    GEMINI = "gemini"          # Google Gemini API
     AZURE = "azure"
-    OLLAMA = "ollama"  # 本地模型
-    CUSTOM = "custom"
+    OLLAMA = "ollama"          # 本地模型
+    CUSTOM = "custom"          # 自定义API (公司自建/第三方兼容OpenAI接口)
 
 
 @dataclass
@@ -112,6 +127,16 @@ class ReviewConfig:
     
     # DeepSeek设置
     deepseek_base_url: str = "https://api.deepseek.com"
+    
+    # Anthropic Claude设置
+    anthropic_base_url: str = "https://api.anthropic.com"
+    
+    # Google Gemini设置
+    gemini_base_url: str = ""  # 留空使用默认
+    
+    # 自定义API设置 (兼容OpenAI接口的公司内部/第三方服务)
+    custom_base_url: str = ""
+    custom_model_name: str = ""
 
 
 class AIReviewEngine:
@@ -208,17 +233,22 @@ class AIReviewEngine:
         config: Optional[ReviewConfig] = None
     ):
         self.config = config or ReviewConfig()
+        self.api_key = api_key
         self.security_filter = SensitiveFilter()
         self.chunker = PRChunker(
             max_tokens=self.config.max_tokens_per_chunk,
             max_files=self.config.max_files_per_chunk
         )
         
-        # 初始化AI客户端
+        # 初始化AI客户端 (根据provider选择不同的客户端)
+        self.client = None           # OpenAI兼容客户端
+        self.anthropic_client = None # Anthropic原生客户端
+        self.gemini_client = None    # Google Gemini客户端
+        
         if self.config.provider == ModelProvider.OLLAMA:
             # Ollama使用OpenAI兼容接口
             self.client = AsyncOpenAI(
-                api_key="ollama",  # Ollama不需要API key
+                api_key="ollama",
                 base_url=f"{self.config.ollama_base_url}/v1"
             )
         elif self.config.provider == ModelProvider.DEEPSEEK:
@@ -227,7 +257,39 @@ class AIReviewEngine:
                 api_key=api_key,
                 base_url=base_url or self.config.deepseek_base_url
             )
+        elif self.config.provider == ModelProvider.ANTHROPIC:
+            # Anthropic Claude 使用原生SDK
+            if not HAS_ANTHROPIC:
+                raise ImportError(
+                    "请安装 anthropic 包: pip install anthropic"
+                )
+            client_kwargs = {"api_key": api_key}
+            if base_url:
+                client_kwargs["base_url"] = base_url
+            elif self.config.anthropic_base_url and self.config.anthropic_base_url != "https://api.anthropic.com":
+                client_kwargs["base_url"] = self.config.anthropic_base_url
+            self.anthropic_client = anthropic.AsyncAnthropic(**client_kwargs)
+        elif self.config.provider == ModelProvider.GEMINI:
+            # Google Gemini 使用原生SDK
+            if not HAS_GOOGLE_GENAI:
+                raise ImportError(
+                    "请安装 google-genai 包: pip install google-genai"
+                )
+            self.gemini_client = genai.Client(api_key=api_key)
+        elif self.config.provider == ModelProvider.CUSTOM:
+            # 自定义API - 兼容OpenAI接口 (公司自建/第三方服务)
+            custom_url = base_url or self.config.custom_base_url
+            if not custom_url:
+                raise ValueError(
+                    "自定义API需要提供 Base URL，请填写您的API服务地址，"
+                    "例如: https://your-company.com/v1"
+                )
+            self.client = AsyncOpenAI(
+                api_key=api_key or "custom-key",
+                base_url=custom_url
+            )
         else:
+            # OpenAI 官方
             client_kwargs = {"api_key": api_key}
             if base_url:
                 client_kwargs["base_url"] = base_url
@@ -351,17 +413,56 @@ class AIReviewEngine:
             }
     
     async def _call_model(self, content: str) -> str:
-        """调用AI模型"""
+        """调用AI模型 - 根据provider路由到不同的API"""
+        user_message = f"请审查以下Pull Request:\n\n{content}"
+        
+        if self.config.provider == ModelProvider.ANTHROPIC:
+            return await self._call_anthropic(user_message)
+        elif self.config.provider == ModelProvider.GEMINI:
+            return await self._call_gemini(user_message)
+        else:
+            # OpenAI / DeepSeek / Ollama / Custom 都走OpenAI兼容接口
+            return await self._call_openai_compatible(user_message)
+    
+    async def _call_openai_compatible(self, user_message: str) -> str:
+        """调用OpenAI兼容接口 (OpenAI/DeepSeek/Ollama/Custom)"""
         response = await self.client.chat.completions.create(
             model=self.config.model,
             messages=[
                 {"role": "system", "content": self.SYSTEM_PROMPT},
-                {"role": "user", "content": f"请审查以下Pull Request:\n\n{content}"}
+                {"role": "user", "content": user_message}
             ],
             temperature=self.config.temperature,
             max_tokens=4000
         )
         return response.choices[0].message.content
+    
+    async def _call_anthropic(self, user_message: str) -> str:
+        """调用Anthropic Claude API"""
+        response = await self.anthropic_client.messages.create(
+            model=self.config.model,
+            max_tokens=4000,
+            temperature=self.config.temperature,
+            system=self.SYSTEM_PROMPT,
+            messages=[
+                {"role": "user", "content": user_message}
+            ]
+        )
+        # Claude返回的content是一个列表
+        return response.content[0].text
+    
+    async def _call_gemini(self, user_message: str) -> str:
+        """调用Google Gemini API"""
+        full_prompt = f"{self.SYSTEM_PROMPT}\n\n{user_message}"
+        response = await self.gemini_client.aio.models.generate_content(
+            model=self.config.model,
+            contents=full_prompt,
+            config=types.GenerateContentConfig(
+                temperature=self.config.temperature,
+                max_output_tokens=4000,
+            ),
+        )
+        return response.text
     
     async def review(
         self, 

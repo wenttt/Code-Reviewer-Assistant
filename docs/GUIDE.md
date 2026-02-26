@@ -17,7 +17,7 @@
 
 ```
 步骤1: 获取 GitHub Token
-步骤2: 获取 DeepSeek API Key (推荐) 或其他AI模型的Key
+步骤2: 获取 AI模型的 API Key (推荐 DeepSeek 或 Claude)
 步骤3: 打开应用，配置Token，选择PR，开始审查
 ```
 
@@ -53,14 +53,14 @@ DeepSeek API Key: sk-xxxxxxxxxxxxxxxxxxxx
 5. 填写Token描述，如 "AI Code Reviewer"
 6. 勾选 `repo` 权限
 7. 点击 **Generate token**
-8. ⚠️ 立即复制Token，关闭页面后无法再次查看
+8. 立即复制Token，关闭页面后无法再次查看
 
 ### 2.2 AI模型配置
 
-#### 方案A: DeepSeek (推荐)
+#### 方案A: DeepSeek (推荐，性价比高)
 
 **优点:**
-- 价格便宜（约为OpenAI的1/10）
+- 价格便宜
 - 代码理解能力强
 - 中文支持好
 - API稳定
@@ -69,7 +69,7 @@ DeepSeek API Key: sk-xxxxxxxxxxxxxxxxxxxx
 ```yaml
 Provider: DeepSeek
 API Key: sk-xxxxxxxxxxxx (从platform.deepseek.com获取)
-Model: deepseek-chat (推荐) 或 deepseek-coder
+Model: deepseek-chat (推荐) / deepseek-coder / deepseek-reasoner (R1推理)
 ```
 
 #### 方案B: OpenAI
@@ -82,11 +82,39 @@ Model: deepseek-chat (推荐) 或 deepseek-coder
 ```yaml
 Provider: OpenAI
 API Key: sk-xxxxxxxxxxxx
-Model: gpt-4o (推荐) / gpt-4-turbo / gpt-3.5-turbo
+Model: gpt-5 (最强) / gpt-4.1 / gpt-4.1-mini / o3 (推理) / o4-mini
 Base URL: 留空 或 自定义代理地址
 ```
 
-#### 方案C: Ollama (本地模型)
+#### 方案C: Anthropic Claude
+
+**优点:**
+- 代码审查能力极强
+- 擅长发现深层逻辑问题
+- 安全可控，拒绝不当内容
+
+**配置:**
+```yaml
+Provider: Anthropic Claude
+API Key: sk-ant-xxxxxxxxxxxx (从console.anthropic.com获取)
+Model: claude-sonnet-4 (推荐) / claude-opus-4 (最强) / claude-3.7-sonnet / claude-3.5-haiku (快速)
+```
+
+#### 方案D: Google Gemini
+
+**优点:**
+- 超长上下文窗口（100万+ tokens），非常适合大PR
+- 多模态支持
+- Google AI Studio 免费额度
+
+**配置:**
+```yaml
+Provider: Google Gemini
+API Key: AIzaxxxxxx (从aistudio.google.com获取)
+Model: gemini-2.5-pro (最强) / gemini-2.5-flash (推荐) / gemini-2.0-flash (快速)
+```
+
+#### 方案E: Ollama (本地模型)
 
 **优点:**
 - 完全免费
@@ -97,20 +125,41 @@ Base URL: 留空 或 自定义代理地址
 ```yaml
 Provider: Ollama
 Base URL: http://localhost:11434
-Model: codellama / deepseek-coder / llama3
+Model: qwen3 (推荐) / deepseek-r1 / codellama / llama4 / gemma3 / devstral
 ```
 
 **前置要求:**
 1. 安装Ollama: https://ollama.ai/download
-2. 拉取模型: `ollama pull codellama`
+2. 拉取模型: `ollama pull qwen3`
 3. 启动服务: `ollama serve`
+
+#### 方案F: 自定义API (公司内部AI服务)
+
+**优点:**
+- 接入公司内部已部署的AI服务
+- 数据完全在公司内网流转
+- 兼容所有OpenAI Chat Completions API格式的服务
+
+**配置:**
+```yaml
+Provider: 自定义API
+Base URL: https://your-company.com/api/v1 (必填)
+API Key: your-api-key (如需要)
+Model: your-model-name (必填，如 company-gpt、internal-llm)
+```
+
+**适用场景:**
+- 公司内部部署的vLLM / TGI / Triton等推理服务
+- Azure OpenAI Service
+- 自建的API网关/代理
+- 任何兼容OpenAI接口格式的第三方服务
 
 ### 2.3 高级选项
 
 | 选项 | 默认值 | 说明 |
 |------|--------|------|
-| 敏感信息过滤 | ✅ 开启 | 自动检测并脱敏API Key、密码等敏感信息 |
-| 上下文增强 | ✅ 开启 | 获取完整文件内容，提供更准确的审查 |
+| 敏感信息过滤 | 开启 | 自动检测并脱敏API Key、密码等敏感信息 |
+| 上下文增强 | 开启 | 获取完整文件内容，提供更准确的审查 |
 
 ---
 
@@ -124,20 +173,22 @@ Model: codellama / deepseek-coder / llama3
 ├─────────────────────────────────────────────────────────┤
 │                                                         │
 │  1. 验证Token → 获取用户信息和仓库列表                    │
-│                    ↓                                    │
+│                    |                                    │
 │  2. 选择仓库 → 获取该仓库的PR列表                        │
-│                    ↓                                    │
+│                    |                                    │
 │  3. 选择PR → 分析PR复杂度，显示预览                      │
-│                    ↓                                    │
-│  4. 开始审查:                                           │
+│                    |                                    │
+│  4. 选择AI提供商 → 配置API Key和模型                     │
+│                    |                                    │
+│  5. 开始审查:                                           │
 │     a. 获取PR详情和所有文件的diff                        │
 │     b. 敏感信息过滤（可选）                              │
 │     c. 大PR自动分片                                     │
 │     d. 获取完整文件上下文（可选）                        │
 │     e. 调用AI模型进行审查                               │
 │     f. 聚合结果并展示                                   │
-│                    ↓                                    │
-│  5. 查看审查报告                                        │
+│                    |                                    │
+│  6. 查看审查报告                                        │
 │                                                         │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -156,11 +207,11 @@ Model: codellama / deepseek-coder / llama3
 
 | 分数 | 等级 | 说明 |
 |------|------|------|
-| 90-100 | 🏆 优秀 | 代码质量高，几乎无问题 |
-| 80-89 | 👍 良好 | 有少量小问题 |
-| 70-79 | 🤔 一般 | 有一些需要改进的地方 |
-| 60-69 | ⚠️ 较差 | 存在明显问题 |
-| 0-59 | ❌ 需重构 | 需要重大修改 |
+| 90-100 | 优秀 | 代码质量高，几乎无问题 |
+| 80-89 | 良好 | 有少量小问题 |
+| 70-79 | 一般 | 有一些需要改进的地方 |
+| 60-69 | 较差 | 存在明显问题 |
+| 0-59 | 需重构 | 需要重大修改 |
 
 ### 3.4 问题严重程度
 
@@ -217,10 +268,6 @@ Model: codellama / deepseek-coder / llama3
 4. 点击 **创建 API Key**
 5. 复制生成的Key
 
-**价格参考** (2024):
-- deepseek-chat: ¥1/百万tokens
-- deepseek-coder: ¥1/百万tokens
-
 ### 4.2 OpenAI API Key
 
 1. 访问 https://platform.openai.com/
@@ -229,11 +276,23 @@ Model: codellama / deepseek-coder / llama3
 4. 点击 **Create new secret key**
 5. 复制生成的Key
 
-**价格参考** (2024):
-- gpt-4o: $5/百万输入tokens, $15/百万输出tokens
-- gpt-3.5-turbo: $0.5/百万输入tokens
+### 4.3 Anthropic Claude API Key
 
-### 4.3 GitHub Token
+1. 访问 https://console.anthropic.com/
+2. 注册/登录账号
+3. 进入 **Settings** → **API Keys**
+4. 点击 **Create Key**
+5. 复制生成的Key (sk-ant-xxx)
+
+### 4.4 Google Gemini API Key
+
+1. 访问 https://aistudio.google.com/apikey
+2. 登录Google账号
+3. 点击 **Create API Key**
+4. 选择项目并创建
+5. 复制生成的Key (AIza...)
+
+### 4.5 GitHub Token
 
 1. 访问 https://github.com/settings/tokens
 2. 点击 **Generate new token (classic)**
@@ -253,6 +312,7 @@ Model: codellama / deepseek-coder / llama3
 - 等待完成，系统会自动分片处理
 - 查看"PR分析预览"了解预计时间
 - 大PR建议拆分成小PR提交
+- 使用Gemini 2.5 Pro，其超长上下文可以减少分片次数
 
 ### Q2: 提示"Token无效"？
 
@@ -265,7 +325,7 @@ Model: codellama / deepseek-coder / llama3
 
 **建议**:
 - 开启"上下文增强"获取更多信息
-- 使用更强的模型（gpt-4o > deepseek-chat > gpt-3.5）
+- 使用更强的模型 (GPT-5 > Claude Opus 4 > Gemini 2.5 Pro > DeepSeek Chat)
 - 确保PR描述清晰，说明变更目的
 
 ### Q4: 担心代码安全怎么办？
@@ -273,9 +333,21 @@ Model: codellama / deepseek-coder / llama3
 **方案**:
 1. 开启"敏感信息过滤"（默认开启）
 2. 使用Ollama本地模型，代码不出本地
-3. 使用私有部署的AI服务
+3. 使用自定义API接入公司内部AI服务
+4. 使用私有部署的AI服务
 
-### Q5: 支持哪些编程语言？
+### Q5: 如何接入公司内部的AI服务？
+
+**步骤**:
+1. 选择"自定义API"提供商
+2. 填写公司AI服务的 API Base URL (需兼容OpenAI接口)
+3. 填写 API Key (如果需要认证)
+4. 填写模型名称 (你们部署的模型名)
+5. 开始审查
+
+**兼容的服务**: vLLM, Text Generation Inference (TGI), Triton, FastChat, LiteLLM, 以及任何实现了 OpenAI Chat Completions API 的服务。
+
+### Q6: 支持哪些编程语言？
 
 **完整支持** (有专门的解析器):
 - Python, JavaScript/TypeScript
@@ -329,7 +401,7 @@ ai-code-reviewer/
 ├── backend/
 │   ├── main.py              # FastAPI主应用
 │   ├── github_client.py     # GitHub API客户端
-│   ├── ai_reviewer.py       # AI审查引擎
+│   ├── ai_reviewer.py       # AI审查引擎 (6种提供商)
 │   ├── security.py          # 敏感信息过滤
 │   ├── chunker.py           # 大PR分片处理
 │   ├── context_analyzer.py  # 上下文分析
@@ -364,20 +436,29 @@ ai-code-reviewer/
 
 ## 更新日志
 
+### v3.0.0 (2026-02)
+- 新增 Anthropic Claude 模型支持 (Sonnet 4 / Opus 4 / 3.7 Sonnet / 3.5 Haiku)
+- 新增 Google Gemini 模型支持 (2.5 Pro / 2.5 Flash / 2.0 Flash)
+- 新增 自定义API支持 - 可接入公司内部AI服务
+- 更新 OpenAI 模型列表 (GPT-5 / GPT-4.1 / o3 / o4-mini)
+- 更新 DeepSeek 模型列表 (新增 deepseek-reasoner R1)
+- 更新 Ollama 本地模型列表 (Qwen3 / Llama4 / DeepSeek-R1 / Gemma3 / Devstral)
+- 优化 前端UI，6种提供商切换面板
+
 ### v2.0.0 (2024-02)
-- ✨ 新增 DeepSeek 模型支持
-- ✨ 新增敏感信息自动过滤
-- ✨ 新增大PR智能分片
-- ✨ 新增完整文件上下文
-- ✨ 新增 Ollama 本地模型支持
-- 🎨 优化前端界面
+- 新增 DeepSeek 模型支持
+- 新增敏感信息自动过滤
+- 新增大PR智能分片
+- 新增完整文件上下文
+- 新增 Ollama 本地模型支持
+- 优化前端界面
 
 ### v1.0.0 (2024-02)
-- 🎉 初始版本发布
+- 初始版本发布
 - GitHub集成
 - AI代码审查
 - 基础界面
 
 ---
 
-**有问题或建议？欢迎提Issue!** 🙌
+**有问题或建议？欢迎提Issue!**
