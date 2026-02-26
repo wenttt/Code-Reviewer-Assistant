@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react'
 const getApiBase = () => {
   const hostname = window.location.hostname
   
-  // Sandbox环境
+  // Sandbox环境 - 动态检测
   if (hostname.includes('sandbox')) {
-    return 'https://8000-iz5bvpy7ypwi0p95ye53l-3844e1b6.sandbox.novita.ai/api'
+    const backendHost = hostname.replace(/^\d+-/, '8000-')
+    return `https://${backendHost}/api`
   }
   
   // 本地开发环境 - 直接访问后端
@@ -80,7 +81,9 @@ const api = {
         enable_context_enhancement: config.enableContextEnhancement,
         model: config.model,
         provider: config.provider,
-        ollama_base_url: config.ollamaBaseUrl || null
+        ollama_base_url: config.ollamaBaseUrl || null,
+        custom_base_url: config.customBaseUrl || null,
+        custom_model_name: config.customModelName || null
       })
     })
     return res.json()
@@ -139,7 +142,7 @@ function ConfigPanel({ config, setConfig, onValidate, isValidating, user }) {
             <div className="text-xs text-gray-500">高性价比</div>
           </button>
           <button
-            onClick={() => setConfig({ ...config, provider: 'openai', model: 'gpt-4o' })}
+            onClick={() => setConfig({ ...config, provider: 'openai', model: 'gpt-5' })}
             className={`p-3 rounded-lg border-2 transition text-left ${
               config.provider === 'openai' 
                 ? 'border-blue-500 bg-blue-50' 
@@ -147,10 +150,32 @@ function ConfigPanel({ config, setConfig, onValidate, isValidating, user }) {
             }`}
           >
             <div className="font-medium">☁️ OpenAI</div>
-            <div className="text-xs text-gray-500">云端API</div>
+            <div className="text-xs text-gray-500">GPT-5 / o3</div>
           </button>
           <button
-            onClick={() => setConfig({ ...config, provider: 'ollama', model: 'codellama' })}
+            onClick={() => setConfig({ ...config, provider: 'anthropic', model: 'claude-sonnet-4-20250514' })}
+            className={`p-3 rounded-lg border-2 transition text-left ${
+              config.provider === 'anthropic' 
+                ? 'border-amber-500 bg-amber-50' 
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <div className="font-medium">🧠 Claude</div>
+            <div className="text-xs text-gray-500">Anthropic</div>
+          </button>
+          <button
+            onClick={() => setConfig({ ...config, provider: 'gemini', model: 'gemini-2.5-pro' })}
+            className={`p-3 rounded-lg border-2 transition text-left ${
+              config.provider === 'gemini' 
+                ? 'border-cyan-500 bg-cyan-50' 
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <div className="font-medium">✨ Gemini</div>
+            <div className="text-xs text-gray-500">Google AI</div>
+          </button>
+          <button
+            onClick={() => setConfig({ ...config, provider: 'ollama', model: 'qwen3' })}
             className={`p-3 rounded-lg border-2 transition text-left ${
               config.provider === 'ollama' 
                 ? 'border-green-500 bg-green-50' 
@@ -159,6 +184,17 @@ function ConfigPanel({ config, setConfig, onValidate, isValidating, user }) {
           >
             <div className="font-medium">🏠 Ollama</div>
             <div className="text-xs text-gray-500">本地模型</div>
+          </button>
+          <button
+            onClick={() => setConfig({ ...config, provider: 'custom', model: '' })}
+            className={`p-3 rounded-lg border-2 transition text-left ${
+              config.provider === 'custom' 
+                ? 'border-rose-500 bg-rose-50' 
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+          >
+            <div className="font-medium">🔧 自定义</div>
+            <div className="text-xs text-gray-500">公司API</div>
           </button>
         </div>
       </div>
@@ -199,6 +235,7 @@ function ConfigPanel({ config, setConfig, onValidate, isValidating, user }) {
             >
               <option value="deepseek-chat">DeepSeek Chat (推荐)</option>
               <option value="deepseek-coder">DeepSeek Coder</option>
+              <option value="deepseek-reasoner">DeepSeek Reasoner (R1)</option>
             </select>
           </div>
         </>
@@ -229,9 +266,14 @@ function ConfigPanel({ config, setConfig, onValidate, isValidating, user }) {
               value={config.model}
               onChange={e => setConfig({ ...config, model: e.target.value })}
             >
-              <option value="gpt-4o">GPT-4o (推荐)</option>
-              <option value="gpt-4-turbo">GPT-4 Turbo</option>
-              <option value="gpt-3.5-turbo">GPT-3.5 Turbo (经济)</option>
+              <option value="gpt-5">GPT-5 (最强)</option>
+              <option value="gpt-4.1">GPT-4.1</option>
+              <option value="gpt-4.1-mini">GPT-4.1 Mini (均衡)</option>
+              <option value="gpt-4.1-nano">GPT-4.1 Nano (经济)</option>
+              <option value="o3">o3 (推理增强)</option>
+              <option value="o4-mini">o4-mini (推理经济)</option>
+              <option value="gpt-4o">GPT-4o (经典)</option>
+              <option value="gpt-4o-mini">GPT-4o Mini</option>
             </select>
           </div>
 
@@ -246,6 +288,104 @@ function ConfigPanel({ config, setConfig, onValidate, isValidating, user }) {
               value={config.openaiBaseUrl}
               onChange={e => setConfig({ ...config, openaiBaseUrl: e.target.value })}
             />
+          </div>
+        </>
+      )}
+
+      {/* Anthropic Claude配置 */}
+      {config.provider === 'anthropic' && (
+        <>
+          <div className="mb-4 p-3 bg-amber-50 rounded-lg">
+            <p className="text-sm text-amber-800">
+              🧠 <strong>Claude</strong>: 代码审查能力强，擅长发现深层问题，安全可控
+            </p>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Anthropic API Key
+            </label>
+            <input
+              type="password"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+              placeholder="sk-ant-xxxxxxxxxxxx"
+              value={config.openaiKey}
+              onChange={e => setConfig({ ...config, openaiKey: e.target.value })}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              从 <a href="https://console.anthropic.com/settings/keys" target="_blank" className="text-amber-600 hover:underline">console.anthropic.com</a> 获取
+            </p>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              模型选择
+            </label>
+            <select
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500"
+              value={config.model}
+              onChange={e => setConfig({ ...config, model: e.target.value })}
+            >
+              <option value="claude-sonnet-4-20250514">Claude Sonnet 4 (推荐)</option>
+              <option value="claude-opus-4-20250514">Claude Opus 4 (最强)</option>
+              <option value="claude-3-7-sonnet-latest">Claude 3.7 Sonnet</option>
+              <option value="claude-3-5-haiku-latest">Claude 3.5 Haiku (快速)</option>
+            </select>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              API Base URL <span className="text-gray-400">(可选，默认官方)</span>
+            </label>
+            <input
+              type="text"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition"
+              placeholder="https://api.anthropic.com"
+              value={config.openaiBaseUrl}
+              onChange={e => setConfig({ ...config, openaiBaseUrl: e.target.value })}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Google Gemini配置 */}
+      {config.provider === 'gemini' && (
+        <>
+          <div className="mb-4 p-3 bg-cyan-50 rounded-lg">
+            <p className="text-sm text-cyan-800">
+              ✨ <strong>Gemini</strong>: Google多模态大模型，超长上下文窗口，适合大PR
+            </p>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Google AI API Key
+            </label>
+            <input
+              type="password"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition"
+              placeholder="AIzaxxxxxxxxxxxxxx"
+              value={config.openaiKey}
+              onChange={e => setConfig({ ...config, openaiKey: e.target.value })}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              从 <a href="https://aistudio.google.com/apikey" target="_blank" className="text-cyan-600 hover:underline">aistudio.google.com</a> 获取
+            </p>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              模型选择
+            </label>
+            <select
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500"
+              value={config.model}
+              onChange={e => setConfig({ ...config, model: e.target.value })}
+            >
+              <option value="gemini-2.5-pro">Gemini 2.5 Pro (最强)</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash (推荐)</option>
+              <option value="gemini-2.0-flash">Gemini 2.0 Flash (快速)</option>
+            </select>
           </div>
         </>
       )}
@@ -281,11 +421,72 @@ function ConfigPanel({ config, setConfig, onValidate, isValidating, user }) {
               value={config.model}
               onChange={e => setConfig({ ...config, model: e.target.value })}
             >
+              <option value="qwen3">Qwen 3 (推荐)</option>
+              <option value="deepseek-r1">DeepSeek R1</option>
               <option value="codellama">CodeLlama (代码专用)</option>
-              <option value="deepseek-coder">DeepSeek Coder</option>
-              <option value="llama3">Llama 3</option>
-              <option value="mistral">Mistral</option>
+              <option value="llama4">Llama 4</option>
+              <option value="gemma3">Gemma 3</option>
+              <option value="devstral">Devstral (代码专用)</option>
             </select>
+          </div>
+        </>
+      )}
+
+      {/* 自定义API配置 */}
+      {config.provider === 'custom' && (
+        <>
+          <div className="mb-4 p-3 bg-rose-50 rounded-lg">
+            <p className="text-sm text-rose-800">
+              🔧 <strong>自定义API</strong>: 接入公司内部AI服务或第三方兼容OpenAI接口的服务
+            </p>
+            <p className="text-xs text-rose-600 mt-1">
+              支持所有兼容OpenAI Chat Completions API格式的服务端点
+            </p>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              API Base URL <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition"
+              placeholder="https://your-company.com/api/v1"
+              value={config.customBaseUrl}
+              onChange={e => setConfig({ ...config, customBaseUrl: e.target.value })}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              公司AI服务的API地址，需兼容OpenAI接口格式
+            </p>
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              API Key <span className="text-gray-400">(如需要)</span>
+            </label>
+            <input
+              type="password"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition"
+              placeholder="your-api-key"
+              value={config.openaiKey}
+              onChange={e => setConfig({ ...config, openaiKey: e.target.value })}
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              模型名称 <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 transition"
+              placeholder="your-model-name"
+              value={config.customModelName}
+              onChange={e => setConfig({ ...config, customModelName: e.target.value, model: e.target.value })}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              模型部署名称，如 company-gpt-4、internal-llm 等
+            </p>
           </div>
         </>
       )}
@@ -707,6 +908,8 @@ function App() {
     provider: 'deepseek',  // 默认使用DeepSeek
     model: 'deepseek-chat',
     ollamaBaseUrl: 'http://localhost:11434',
+    customBaseUrl: '',
+    customModelName: '',
     enableSecurityFilter: true,
     enableContextEnhancement: true
   })
@@ -797,8 +1000,19 @@ function App() {
       return
     }
 
-    if ((config.provider === 'openai' || config.provider === 'deepseek') && !config.openaiKey) {
-      setError(`请配置${config.provider === 'deepseek' ? 'DeepSeek' : 'OpenAI'} API Key`)
+    if ((config.provider === 'openai' || config.provider === 'deepseek' || config.provider === 'anthropic' || config.provider === 'gemini') && !config.openaiKey) {
+      const providerNames = { deepseek: 'DeepSeek', openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google AI' }
+      setError(`请配置${providerNames[config.provider] || config.provider} API Key`)
+      return
+    }
+
+    if (config.provider === 'custom' && !config.customBaseUrl) {
+      setError('自定义API需要填写Base URL')
+      return
+    }
+
+    if (config.provider === 'custom' && !config.customModelName) {
+      setError('自定义API需要填写模型名称')
       return
     }
 
@@ -840,13 +1054,18 @@ function App() {
               <span className="text-3xl">🤖</span>
               <div>
                 <h1 className="text-xl font-bold text-gray-800">AI Code Reviewer</h1>
-                <p className="text-sm text-gray-500">智能代码审查助手 v2.0</p>
+                <p className="text-sm text-gray-500">智能代码审查助手 v3.0</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
               {config.provider === 'ollama' && (
                 <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs">
                   🏠 本地模式
+                </span>
+              )}
+              {config.provider === 'custom' && (
+                <span className="px-2 py-1 bg-rose-100 text-rose-800 rounded text-xs">
+                  🔧 自定义API
                 </span>
               )}
               {user && (
@@ -914,7 +1133,11 @@ function App() {
               <div className="mb-6">
                 <button
                   onClick={handleReview}
-                  disabled={isReviewing || ((config.provider === 'openai' || config.provider === 'deepseek') && !config.openaiKey)}
+                  disabled={isReviewing || (
+                    (config.provider === 'openai' || config.provider === 'deepseek' || config.provider === 'anthropic' || config.provider === 'gemini') && !config.openaiKey
+                  ) || (
+                    config.provider === 'custom' && (!config.customBaseUrl || !config.customModelName)
+                  )}
                   className="w-full py-4 px-6 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-xl font-bold text-lg hover:from-purple-700 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-3"
                 >
                   {isReviewing ? (
@@ -929,9 +1152,17 @@ function App() {
                     </>
                   )}
                 </button>
-                {(config.provider === 'openai' || config.provider === 'deepseek') && !config.openaiKey && (
+                {(config.provider === 'openai' || config.provider === 'deepseek' || config.provider === 'anthropic' || config.provider === 'gemini') && !config.openaiKey && (
                   <p className="text-center text-sm text-orange-600 mt-2">
-                    ⚠️ 请先配置{config.provider === 'deepseek' ? 'DeepSeek' : 'OpenAI'} API Key
+                    {(() => {
+                      const names = { deepseek: 'DeepSeek', openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google AI' }
+                      return `⚠️ 请先配置${names[config.provider] || config.provider} API Key`
+                    })()}
+                  </p>
+                )}
+                {config.provider === 'custom' && (!config.customBaseUrl || !config.customModelName) && (
+                  <p className="text-center text-sm text-orange-600 mt-2">
+                    ⚠️ 请填写自定义API的Base URL和模型名称
                   </p>
                 )}
               </div>
@@ -951,30 +1182,34 @@ function App() {
             {!user && (
               <div className="bg-white rounded-xl shadow-lg p-12 text-center">
                 <span className="text-6xl mb-4 inline-block">🔑</span>
-                <h2 className="text-2xl font-bold text-gray-800 mb-4">欢迎使用 AI Code Reviewer v2.0</h2>
+                <h2 className="text-2xl font-bold text-gray-800 mb-4">欢迎使用 AI Code Reviewer v3.0</h2>
                 <p className="text-gray-600 mb-6">
                   请在左侧配置面板输入您的GitHub Token来开始使用
                 </p>
                 
                 {/* 新功能介绍 */}
                 <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 text-left mb-6">
-                  <p className="font-medium text-gray-700 mb-3">✨ v2.0 新功能:</p>
+                  <p className="font-medium text-gray-700 mb-3">✨ v3.0 新功能:</p>
                   <ul className="text-sm text-gray-600 space-y-2">
                     <li className="flex items-center gap-2">
                       <span className="text-green-500">✓</span>
-                      🔒 敏感信息自动检测和脱敏
+                      🧠 新增 Anthropic Claude 模型 (Sonnet 4 / Opus 4)
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="text-green-500">✓</span>
-                      📦 大PR智能分片审查
+                      ✨ 新增 Google Gemini 模型 (2.5 Pro / Flash)
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="text-green-500">✓</span>
-                      📖 完整文件上下文增强
+                      🔧 支持自定义API - 接入公司内部AI服务
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="text-green-500">✓</span>
-                      🏠 支持Ollama本地模型
+                      🚀 升级 OpenAI GPT-5 / o3 / o4-mini
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="text-green-500">✓</span>
+                      🏠 Ollama 本地模型升级 (Qwen3 / Llama4 / DeepSeek-R1)
                     </li>
                   </ul>
                 </div>
@@ -998,9 +1233,9 @@ function App() {
       {/* Footer */}
       <footer className="border-t border-gray-200 mt-12 py-6">
         <div className="max-w-6xl mx-auto px-4 text-center text-gray-500 text-sm">
-          <p>AI Code Reviewer v2.0.0 - Powered by OpenAI / Ollama & GitHub API</p>
+          <p>AI Code Reviewer v3.0.0 - Powered by OpenAI / Anthropic / Google / DeepSeek / Ollama & GitHub API</p>
           <p className="mt-1 text-xs">
-            🔒 敏感信息过滤 | 📦 智能分片 | 📖 上下文增强 | 🏠 本地模型支持
+            🔒 敏感信息过滤 | 📦 智能分片 | 📖 上下文增强 | 🏠 本地模型 | 🔧 自定义API
           </p>
         </div>
       </footer>

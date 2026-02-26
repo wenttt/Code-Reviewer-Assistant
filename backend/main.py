@@ -20,8 +20,8 @@ load_dotenv()
 
 app = FastAPI(
     title="AI Code Reviewer API",
-    description="智能代码审查服务API - 增强版",
-    version="2.0.0"
+    description="智能代码审查服务API - 增强版 (支持多模型提供商)",
+    version="3.0.0"
 )
 
 # 配置CORS
@@ -50,14 +50,17 @@ class ReviewRequest(BaseModel):
     owner: str
     repo: str
     pull_number: int
-    openai_api_key: str
+    openai_api_key: str = ""
     openai_base_url: Optional[str] = None
-    # 新增配置选项
+    # 配置选项
     enable_security_filter: bool = True
     enable_context_enhancement: bool = True
     model: str = "gpt-4o"
-    provider: str = "openai"  # openai | ollama
+    provider: str = "openai"  # openai | deepseek | anthropic | gemini | ollama | custom
     ollama_base_url: Optional[str] = None
+    # 自定义API设置
+    custom_base_url: Optional[str] = None
+    custom_model_name: Optional[str] = None
 
 
 class ReviewResponse(BaseModel):
@@ -108,12 +111,14 @@ async def root():
     return {
         "status": "ok", 
         "message": "AI Code Reviewer API is running",
-        "version": "2.0.0",
+        "version": "3.0.0",
         "features": [
             "sensitive_info_filter",
             "large_pr_chunking", 
             "context_enhancement",
-            "local_model_support"
+            "local_model_support",
+            "multi_provider_support",
+            "custom_api_support"
         ]
     }
 
@@ -324,7 +329,7 @@ async def perform_review(
     request: ReviewRequest,
     authorization: str = Header(None)
 ):
-    """执行AI代码审查（增强版）"""
+    """执行AI代码审查（增强版 - 支持多模型提供商）"""
     token = get_github_token(authorization)
     
     try:
@@ -337,20 +342,36 @@ async def perform_review(
         )
         
         # 构建审查配置
+        valid_providers = ["openai", "deepseek", "anthropic", "gemini", "ollama", "custom"]
+        provider = request.provider if request.provider in valid_providers else "openai"
+        
         config = ReviewConfig(
             enable_security_filter=request.enable_security_filter,
             enable_context_enhancement=request.enable_context_enhancement,
             model=request.model,
-            provider=ModelProvider(request.provider) if request.provider in ["openai", "deepseek", "ollama"] else ModelProvider.OPENAI,
+            provider=ModelProvider(provider),
         )
         
-        if request.provider == "ollama" and request.ollama_base_url:
+        # 各 provider 特殊配置
+        if provider == "ollama" and request.ollama_base_url:
             config.ollama_base_url = request.ollama_base_url
+        
+        if provider == "custom":
+            if request.custom_base_url:
+                config.custom_base_url = request.custom_base_url
+            if request.custom_model_name:
+                config.custom_model_name = request.custom_model_name
+                config.model = request.custom_model_name
+        
+        # 确定 base_url
+        base_url = request.openai_base_url
+        if provider == "custom" and request.custom_base_url:
+            base_url = request.custom_base_url
         
         # 初始化AI审查引擎
         ai_engine = AIReviewEngine(
             api_key=request.openai_api_key,
-            base_url=request.openai_base_url,
+            base_url=base_url,
             config=config
         )
         
@@ -366,6 +387,8 @@ async def perform_review(
             success=True,
             review=result.to_dict(),
             meta={
+                "provider": provider,
+                "model": config.model,
                 "chunks_count": result.chunks_count,
                 "context_enhanced": result.context_enhanced,
                 "security_filtered": len(result.filtered_secrets or []) > 0,
@@ -390,7 +413,7 @@ async def get_model_providers():
                 "id": "deepseek",
                 "name": "DeepSeek",
                 "description": "DeepSeek AI - 高性价比的代码专用模型",
-                "models": ["deepseek-chat", "deepseek-coder"],
+                "models": ["deepseek-chat", "deepseek-coder", "deepseek-reasoner"],
                 "requires_api_key": True,
                 "supports_base_url": True,
                 "default_base_url": "https://api.deepseek.com"
@@ -399,18 +422,44 @@ async def get_model_providers():
                 "id": "openai",
                 "name": "OpenAI",
                 "description": "OpenAI GPT系列模型",
-                "models": ["gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo"],
+                "models": ["gpt-5", "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3", "o4-mini", "gpt-4o", "gpt-4o-mini"],
                 "requires_api_key": True,
                 "supports_base_url": True
+            },
+            {
+                "id": "anthropic",
+                "name": "Anthropic Claude",
+                "description": "Anthropic Claude系列 - 代码审查能力强，安全可控",
+                "models": ["claude-sonnet-4-20250514", "claude-opus-4-20250514", "claude-3-7-sonnet-latest", "claude-3-5-haiku-latest"],
+                "requires_api_key": True,
+                "supports_base_url": True,
+                "default_base_url": "https://api.anthropic.com"
+            },
+            {
+                "id": "gemini",
+                "name": "Google Gemini",
+                "description": "Google Gemini系列 - 多模态大模型，长上下文窗口",
+                "models": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"],
+                "requires_api_key": True,
+                "supports_base_url": False
             },
             {
                 "id": "ollama", 
                 "name": "Ollama (本地)",
                 "description": "本地部署的开源模型，数据不出本地",
-                "models": ["codellama", "deepseek-coder", "llama3", "mistral"],
+                "models": ["qwen3", "deepseek-r1", "codellama", "llama4", "gemma3", "devstral"],
                 "requires_api_key": False,
                 "supports_base_url": True,
                 "default_base_url": "http://localhost:11434"
+            },
+            {
+                "id": "custom",
+                "name": "自定义API",
+                "description": "接入公司内部或第三方AI服务 (兼容OpenAI接口)",
+                "models": [],
+                "requires_api_key": True,
+                "supports_base_url": True,
+                "allow_custom_model": True
             }
         ]
     }
